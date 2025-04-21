@@ -11,38 +11,45 @@ uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-
-    # Identify potential numeric and date columns
-    numeric_cols = df.select_dtypes(include='number').columns.tolist()
     df.columns = df.columns.str.strip()
-    df_preview = df.copy()
 
-    # Convert all columns to datetime and keep successful ones
+    # Detect column types
+    numeric_cols = df.select_dtypes(include='number').columns.tolist()
     date_candidates = []
+
     for col in df.columns:
         try:
-            temp = pd.to_datetime(df[col])
+            pd.to_datetime(df[col])
             date_candidates.append(col)
         except:
             continue
 
+    # Sidebar input
     st.sidebar.header("Configuration")
     date_field = st.sidebar.selectbox("Select a date field", date_candidates)
     value_field = st.sidebar.selectbox("Select a numeric field", numeric_cols)
 
-    # Clean and process data
-    df[date_field] = pd.to_datetime(df[date_field], errors='coerce')
+    # Safe conversion for datetime
+    try:
+        df[date_field] = pd.to_datetime(df[date_field], errors="coerce")
+        if df[date_field].isnull().all():
+            st.error(f"The selected date column '{date_field}' could not be parsed as datetime.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Error converting '{date_field}' to datetime: {e}")
+        st.stop()
+
     df[value_field] = pd.to_numeric(df[value_field], errors='coerce')
     df = df.dropna(subset=[date_field, value_field])
 
-    # KPIs
+    # KPI Metrics
     st.subheader("Key Metrics")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total", f"{df[value_field].sum():,.2f}")
     col2.metric("Average", f"{df[value_field].mean():,.2f}")
     col3.metric("Maximum", f"{df[value_field].max():,.2f}")
 
-    # Trend Visualization
+    # Trend Over Time
     st.subheader("Trend Over Time")
     df_grouped = df.groupby(df[date_field].dt.to_period("M"))[value_field].sum().reset_index()
     df_grouped[date_field] = df_grouped[date_field].dt.to_timestamp()
@@ -51,8 +58,8 @@ if uploaded_file:
         df_grouped,
         x=date_field,
         y=value_field,
+        title="Monthly Trend",
         labels={date_field: "Date", value_field: "Value"},
-        title="Monthly Trend"
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -73,4 +80,7 @@ if uploaded_file:
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-    # Optional data preview
+    # Optional raw data preview
+    with st.expander("View Raw Data"):
+        st.dataframe(df.head(50))
+
